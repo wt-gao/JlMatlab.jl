@@ -1,6 +1,6 @@
 """
     ndgrid(x::AbstractVector...) -> Tuple{AbstractArray...}
-return `nd` carstesian product of input vectors in `ij` index style.
+return `nd` carstesian product grid of input vectors in `ij` index style.
 """
 ndgrid(x::AbstractVector) = x
 ndgrid(x::AbstractVector...) = ndgrid(x)
@@ -11,7 +11,7 @@ end
 
 """
     meshgrid(x::AbstractVector,[y::AbstractVector]) -> Tuple{AbstractArray...}
-return `2d` carstesian product of input vectors in `xy` index style.
+return `2d` carstesian product grid of input vectors in `xy` index style.
 """
 meshgrid(x::AbstractVector) = meshgrid(x, x)
 

@@ -1,2 +1,3 @@
 # JlMatlab.jl
-Some Julia function like in Matlab
+
+Some Julia functions like in Matlab

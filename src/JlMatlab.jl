@@ -1,5 +1,7 @@
 module JlMatlab
 
+export ndgrid, meshgrid
+
 # `ndgrid` and `meshgrid` function
 include("grid.jl")
 
