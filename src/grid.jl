@@ -15,7 +15,7 @@ end
 return `2d` carstesian product grid of input vectors in `xy` index style.
 """
 meshgrid(x::AbstractVector) = meshgrid(x, x)
-
+meshgrid(x::NTuple{2,AbstractVector}) = meshgrid(x...)
 function meshgrid(x::AbstractVector, y::AbstractVector)
     (
         [@inbounds v[2] for v in Iterators.product(y, x)],
