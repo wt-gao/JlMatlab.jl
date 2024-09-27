@@ -29,4 +29,7 @@ mgrid4(x::AbstractVector, y::AbstractVector) = (
 @btime mgrid3(1:100, 1:100)
 @btime mgrid4(1:100, 1:100)
 
-print("hello julia")
+@btime ndgrid(1:100, 1:100)
+@btime meshgrid(1:100, 1:100)
+
+;
