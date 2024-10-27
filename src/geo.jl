@@ -1,71 +1,115 @@
 """
     inpolygon(
-        xv::AbstractVector{<:Real},
-        yv::AbstractVector{<:Real},
-        xq::AbstractVector{<:Real},
-        yq::AbstractVector{<:Real}) -> Vector{Bool}
-Test quiried points `xq` and `yq` if they are inside the polygon defined by `xv` and `yv`.
+        xv::AbstractVector{<:Real}, yv::AbstractVector{<:Real},
+        xq::AbstractVector{<:Real}, yq::AbstractVector{<:Real}
+    ) -> Vector{Bool}
+Test quiried points (`xq`,`yq`) if they are inside the polygon defined by (`xv`,`yv`).
 `true` if inside, `false` otherwise.
 """
 function inpolygon(
-    xv::AbstractVector{<:Real},
-    yv::AbstractVector{<:Real},
-    xq::AbstractVector{<:Real},
-    yq::AbstractVector{<:Real})
+    xv::AbstractVector{<:Real}, yv::AbstractVector{<:Real},
+    xq::AbstractVector{<:Real}, yq::AbstractVector{<:Real}
+)
+    length(xq) != length(yq) && throw(ArgumentError("xq and yq must have the same length"))
 
-    np = length(xq)
-    np != length(yq) && throw(ArgumentError("xq and yq must have the same length"))
+    p = (xv, yv)
+    e = _poly_edge(p)
+    _inpolygon(p, e, (xq, yq))
+end
 
-    edge = _check_polyloop(xv, yv)
+function _poly_edge(p)
+    n = getn(p)
+    nanix = [isnan(getx(p, i)) for i in 1:n]
+    naniy = [isnan(gety(p, i)) for i in 1:n]
+    any(nanix ⊻ naniy) && throw(ArgumentError(
+        "Indices of NaNs in x coordinate and y coordinate must be the same"))
 
-    inpoly(x, y) = begin
+    e = Tuple{Int,Int}[]
+    sizehint!(e, n)
+
+    nanloc = (1:n)[nanix]
+    push!(nanloc, n + 1)
+
+    start_idx = 1
+    @inbounds for i in nanloc
+        end_idx = i - 1
+        append!(e, [(j, j + 1) for j in start_idx:end_idx])
+        isclosed(p, end_idx, start_idx) && (pop!(e); end_idx -= 1)
+        e[end] = (end_idx, start_idx)
+        start_idx = i + 1
+    end
+    e
+end
+
+const Point{T} = Tuple{T,T} where {T<:Real}
+const Edge = Tuple{Int,Int}
+const AbstractPolygon = AbstractVector{Point{<:Real}}
+
+inpolygon(pv, pq) = (e = _poly_edge(pv); _inpolygon(pv, e, pq))
+function inpolygon(pv::AbstractVector{<:AbstractVector{Point{T}}}, q) where {T<:Real}
+    ns = map(length, pv)
+    p = Point{T}[]
+
+    np = sum(ns)
+    sizehint!(p, np)
+
+    e = Edge[]
+    sizehint!(e, np)
+
+    pcount = 0
+    @inbounds for v in pv
+        nv = getn(v)
+        append!(p, v)
+        append!(e, [(pcount + j, pcount + j + 1) for j in 1:nv])
+        isclosed(v, nv, 1) && (pop!(e); nv -= 1)
+        e[end] = (nv, 1)
+        pcount += nv
+    end
+    _inpolygon(p, e, q)
+end
+
+function _orient(pa, pb, pc)
+    d = (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pc[1] - pa[1]) * (pb[2] - pa[2])
+    d ≈ 0 && return 0
+    d > 0 ? 1 : -1
+end
+
+function _inpolygon(p, e, q)
+    n = getn(q)
+    ixin = Vector{Bool}(undef, n)
+    ixon = Vector{Bool}(undef, n)
+    test_edge(i) = @inbounds begin
         D = 0
-        @inbounds for ie in edge
-            !(yv[ie[1]] > y ⊻ yv[ie[2]] > y) && continue
-            d = orient(x, y, xv[ie[1]], yv[ie[1]], xv[ie[2]], yv[ie[2]])
-            d == 0 && return (true, true)
+        for ej in e
+            !(gety(p, ej[1]) > gety(q, i) ⊻ gety(p, ej[2]) > gety(q, i)) && continue
+            d = _orient((getx(q, i), gety(q, i)),
+                (getx(p, ej[1]), gety(p, ej[1])),
+                (getx(p, ej[2]), gety(p, ej[2])))
+            d == 0 && (ixin[i] = true; ixon[i] = true; return)
             D += d
         end
-        (D != 0, false)
+        ixin[i] = D != 0
+        ixon[i] = false
+        nothing
     end
-
-    in_on = inpoly.(xq, yq)
-    ([v[1] for v in in_on], [v[2] for v in in_on])
+    test_edge.(1:length(q))
+    (ixin, ixon)
 end
 
-function orient(x1::Real, y1::Real, x2::Real, y2::Real, x3::Real, y3::Real)::Int
-    det = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
-    det ≈ 0 && return 0
-    det > 0 ? 1 : -1
-end
+getx(p) = p[1]
+gety(p) = p[2]
 
-function _check_polyloop(xv::AbstractVector{<:Real}, yv::AbstractVector{<:Real})
-    n = length(xv)
-    n != length(yv) && throw(ArgumentError("xv and yv must have the same length"))
-    n < 3 && throw(ArgumentError("xv and yv must have at least 3 elements"))
+getx(p::AbstractVector{Point{<:Real}}, i::Integer) = (@inbounds p[Int(i)][1])
+gety(p::AbstractVector{Point{<:Real}}, i::Integer) = (@inbounds p[Int(i)][2])
 
-    nanix = isnan.(xv)
-    any(nanix ⊻ isnan.(yv)) && throw(ArgumentError("Indices of NaNs in xv and yv must be the same"))
+getx(p::AbstractMatrix{<:Real}, i::Integer) = (@inbounds p[Int(i), 1])
+gety(p::AbstractMatrix{<:Real}, i::Integer) = (@inbounds p[Int(i), 2])
 
-    nloop = count(nanix)
+getx(p::Tuple{AbstractVector{<:Real},AbstractVector{<:Real}}, i::Integer) = (@inbounds p[1][Int(i)])
+gety(p::Tuple{AbstractVector{<:Real},AbstractVector{<:Real}}, i::Integer) = (@inbounds p[2][Int(i)])
 
-    edge = Vector{Tuple{Int,Int}}(undef, n)
-    sizehint!(edge, nloop)
+getn(p) = length(p)
+getn(p::AbstractMatrix{<:Real}) = size(p, 1)
+getn(p::Tuple{AbstractVector{<:Real},AbstractVector{<:Real}}) = length(p[1])
 
-    iloop = 1
-    start_idx = 1
-    @inbounds for i in findall(nanix)
-        end_idx = i - 1
-        (xv[end_idx] ≈ xv[start_idx] && yv[end_idx] ≈ yv[start_idx]) && (end_idx -= 1)
-        push!(edge, (start_idx, end_idx))
-        start_idx = i + 1
-        iloop += 1
-    end
-
-    if start_idx < n
-        end_idx = n
-        @inbounds (xv[n] ≈ xv[start_idx] && yv[n] ≈ yv[start_idx]) && (end_idx -= 1)
-        push!(edge, (start_idx, end_idx))
-    end
-    edge
-end
+isclosed(p, i::Integer, j::Integer) = getx(p, i) ≈ getx(p, j) && gety(p, i) ≈ gety(p, j)
